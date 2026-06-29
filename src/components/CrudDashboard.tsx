@@ -5,192 +5,39 @@ import {
   createRecord,
   deleteRecord,
   getCollection,
-  getRecordKey,
   Item,
   Order,
   updateRecord,
 } from "@/lib/strapi";
-
-const categories = ["starters", "main", "dessert", "drinks"] as const;
-const statuses = ["pending", "preparing", "delivered", "cancelled"] as const;
-
-type ItemForm = {
-  key?: string | number;
-  name: string;
-  description: string;
-  price: string;
-  is_available: boolean;
-  item_created_at_: string;
-  category: string;
-};
-
-type OrderForm = {
-  key?: string | number;
-  order_status: string;
-  total_amount: string;
-  order_created_at: string;
-  order_updated_at: string;
-  itemKeys: string[];
-};
-
-function toInputDate(value?: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 16);
-}
-
-function currentInputDate() {
-  const date = new Date();
-  const timezoneOffset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
-}
-
-function createEmptyItem(): ItemForm {
-  return {
-    name: "",
-    description: "",
-    price: "",
-    is_available: true,
-    item_created_at_: currentInputDate(),
-    category: "main",
-  };
-}
-
-function createEmptyOrder(): OrderForm {
-  const now = currentInputDate();
-
-  return {
-    order_status: "pending",
-    total_amount: "",
-    order_created_at: now,
-    order_updated_at: now,
-    itemKeys: [],
-  };
-}
-
-function toApiDate(value: string) {
-  return value ? new Date(value).toISOString() : undefined;
-}
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function itemFormFromRecord(item: Item): ItemForm {
-  return {
-    key: getRecordKey(item),
-    name: item.name ?? "",
-    description: item.description ?? "",
-    price: item.price === undefined ? "" : String(item.price),
-    is_available: Boolean(item.is_available),
-    item_created_at_: toInputDate(item.item_created_at_),
-    category: item.category ?? "main",
-  };
-}
-
-function extractOrderItemKeys(order: Order) {
-  if (!order.items) return [];
-
-  if (Array.isArray(order.items)) {
-    return order.items
-      .map((item) => getRecordKey(item))
-      .filter((key): key is string | number => key !== undefined)
-      .map(String);
-  }
-
-  if ("data" in order.items && Array.isArray(order.items.data)) {
-    return order.items.data
-      .map((item) => {
-        if (!item || typeof item !== "object") return undefined;
-        const record = item as {
-          id?: number;
-          documentId?: string;
-          attributes?: { id?: number; documentId?: string };
-        };
-
-        return record.documentId ?? record.id ?? record.attributes?.documentId;
-      })
-      .filter((key): key is string | number => key !== undefined)
-      .map(String);
-  }
-
-  return [];
-}
-
-function orderFormFromRecord(order: Order): OrderForm {
-  return {
-    key: getRecordKey(order),
-    order_status: order.order_status ?? "pending",
-    total_amount:
-      order.total_amount === undefined ? "" : String(order.total_amount),
-    order_created_at: toInputDate(order.order_created_at),
-    order_updated_at: toInputDate(order.order_updated_at),
-    itemKeys: extractOrderItemKeys(order),
-  };
-}
-
-function itemPayload(form: ItemForm) {
-  return {
-    name: form.name,
-    description: form.description,
-    price: form.price || undefined,
-    is_available: form.is_available,
-    item_created_at_: toApiDate(form.item_created_at_),
-    category: form.category,
-  };
-}
-
-function orderPayload(form: OrderForm, totalAmount: string) {
-  return {
-    order_status: form.order_status,
-    total_amount: totalAmount || undefined,
-    order_created_at: toApiDate(form.order_created_at),
-    order_updated_at: toApiDate(form.order_updated_at),
-    items: form.itemKeys.length ? form.itemKeys : undefined,
-  };
-}
-
-function parsePrice(price?: string | number) {
-  if (price === undefined || price === null || price === "") return 0;
-  const parsed = Number(String(price).replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatMoney(value: number) {
-  return value.toFixed(2);
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex min-h-7 items-center rounded-md border border-stone-300 bg-white px-2 text-xs font-medium text-stone-700">
-      {children}
-    </span>
-  );
-}
+import { DashboardTabs } from "./dashboard/DashboardTabs";
+import { ItemFormPanel } from "./dashboard/ItemFormPanel";
+import { ItemTable } from "./dashboard/ItemTable";
+import { OrderFormPanel } from "./dashboard/OrderFormPanel";
+import { OrderTable } from "./dashboard/OrderTable";
+import { SummaryCards } from "./dashboard/SummaryCards";
+import { ActiveTab } from "./dashboard/types";
+import {
+  createEmptyItem,
+  createEmptyOrder,
+  formatMoney,
+  itemFormFromRecord,
+  itemOptionFromRecord,
+  itemPayload,
+  orderFormFromRecord,
+  orderPayload,
+} from "./dashboard/utils";
 
 export function CrudDashboard() {
   const [items, setItems] = useState<Item[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [itemForm, setItemForm] = useState<ItemForm>(() => createEmptyItem());
-  const [orderForm, setOrderForm] = useState<OrderForm>(() => createEmptyOrder());
-  const [activeTab, setActiveTab] = useState<"items" | "orders">("items");
+  const [itemForm, setItemForm] = useState(() => createEmptyItem());
+  const [orderForm, setOrderForm] = useState(() => createEmptyOrder());
+  const [activeTab, setActiveTab] = useState<ActiveTab>("items");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
   const itemOptions = useMemo(
-    () =>
-      items
-        .map((item) => ({
-          key: getRecordKey(item),
-          label: item.name || `Item ${getRecordKey(item)}`,
-          price: parsePrice(item.price),
-        }))
-        .filter((item) => item.key),
+    () => items.map(itemOptionFromRecord).filter((item) => item !== undefined),
     [items],
   );
 
@@ -224,11 +71,13 @@ export function CrudDashboard() {
   async function loadData() {
     setLoading(true);
     setMessage("");
+
     try {
       const [nextItems, nextOrders] = await Promise.all([
         getCollection<Item>("items"),
         getCollection<Order>("orders"),
       ]);
+
       setItems(nextItems);
       setOrders(nextOrders);
     } catch (error) {
@@ -248,6 +97,7 @@ export function CrudDashboard() {
 
   async function submitItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     try {
       if (itemForm.key) {
         await updateRecord("items", itemForm.key, itemPayload(itemForm));
@@ -256,6 +106,7 @@ export function CrudDashboard() {
         await createRecord("items", itemPayload(itemForm));
         setMessage("Item created.");
       }
+
       setItemForm(createEmptyItem());
       await loadData();
     } catch (error) {
@@ -265,6 +116,7 @@ export function CrudDashboard() {
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     try {
       if (orderForm.key) {
         await updateRecord(
@@ -277,6 +129,7 @@ export function CrudDashboard() {
         await createRecord("orders", orderPayload(orderForm, calculatedOrderTotal));
         setMessage("Order created.");
       }
+
       setOrderForm(createEmptyOrder());
       await loadData();
     } catch (error) {
@@ -286,6 +139,7 @@ export function CrudDashboard() {
 
   async function removeRecord(collection: "items" | "orders", key?: string | number) {
     if (!key) return;
+
     try {
       await deleteRecord(collection, key);
       setMessage(`${collection === "items" ? "Item" : "Order"} deleted.`);
@@ -318,22 +172,11 @@ export function CrudDashboard() {
           </button>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-lg border border-stone-300 bg-white p-4">
-            <p className="text-sm text-stone-500">Items</p>
-            <p className="mt-2 text-3xl font-semibold">{items.length}</p>
-          </div>
-          <div className="rounded-lg border border-stone-300 bg-white p-4">
-            <p className="text-sm text-stone-500">Orders</p>
-            <p className="mt-2 text-3xl font-semibold">{orders.length}</p>
-          </div>
-          <div className="rounded-lg border border-stone-300 bg-white p-4">
-            <p className="text-sm text-stone-500">API</p>
-            <p className="mt-2 break-all text-base font-semibold">
-              {process.env.NEXT_PUBLIC_STRAPI_URL ?? "http://localhost:1337"}
-            </p>
-          </div>
-        </section>
+        <SummaryCards
+          itemCount={items.length}
+          orderCount={orders.length}
+          apiUrl={process.env.NEXT_PUBLIC_STRAPI_URL ?? "http://localhost:1337"}
+        />
 
         {message ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -341,448 +184,41 @@ export function CrudDashboard() {
           </div>
         ) : null}
 
-        <div className="flex gap-2 border-b border-stone-300">
-          {(["items", "orders"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`h-11 border-b-2 px-4 text-sm font-semibold capitalize ${
-                activeTab === tab
-                  ? "border-red-700 text-red-800"
-                  : "border-transparent text-stone-500 hover:text-stone-950"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        <DashboardTabs activeTab={activeTab} onChange={setActiveTab} />
 
         {activeTab === "items" ? (
           <section className="grid gap-6 lg:grid-cols-[380px_1fr]">
-            <form
+            <ItemFormPanel
+              form={itemForm}
+              onChange={setItemForm}
+              onClear={() => setItemForm(createEmptyItem())}
               onSubmit={submitItem}
-              className="rounded-lg border border-stone-300 bg-white p-4"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">
-                  {itemForm.key ? "Edit item" : "Create item"}
-                </h2>
-                {itemForm.key ? (
-                  <button
-                    type="button"
-                    onClick={() => setItemForm(createEmptyItem())}
-                    className="text-sm font-semibold text-red-700 hover:text-red-900"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-4 grid gap-3">
-                <label className="grid gap-1 text-sm font-medium">
-                  Name
-                  <input
-                    required
-                    value={itemForm.name}
-                    onChange={(event) =>
-                      setItemForm({ ...itemForm, name: event.target.value })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                    placeholder="Pizza Margherita"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Description
-                  <textarea
-                    value={itemForm.description}
-                    onChange={(event) =>
-                      setItemForm({
-                        ...itemForm,
-                        description: event.target.value,
-                      })
-                    }
-                    className="min-h-24 rounded-md border border-stone-300 px-3 py-2 outline-none focus:border-red-700"
-                    placeholder="Short menu description"
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium">
-                    Price
-                    <input
-                      value={itemForm.price}
-                      onChange={(event) =>
-                        setItemForm({ ...itemForm, price: event.target.value })
-                      }
-                      className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                      placeholder="12.50"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium">
-                    Category
-                    <select
-                      value={itemForm.category}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          category: event.target.value,
-                        })
-                      }
-                      className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                    >
-                      {categories.map((category) => (
-                        <option key={category}>{category}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="grid gap-1 text-sm font-medium">
-                  Created at
-                  <input
-                    type="datetime-local"
-                    value={itemForm.item_created_at_}
-                    onChange={(event) =>
-                      setItemForm({
-                        ...itemForm,
-                        item_created_at_: event.target.value,
-                      })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    checked={itemForm.is_available}
-                    onChange={(event) =>
-                      setItemForm({
-                        ...itemForm,
-                        is_available: event.target.checked,
-                      })
-                    }
-                    className="size-4 accent-red-700"
-                  />
-                  Available
-                </label>
-                <button
-                  type="submit"
-                  className="h-10 rounded-md bg-red-700 px-4 text-sm font-semibold text-white transition hover:bg-red-800"
-                >
-                  {itemForm.key ? "Update item" : "Create item"}
-                </button>
-              </div>
-            </form>
-
-            <div className="overflow-hidden rounded-lg border border-stone-300 bg-white">
-              <div className="border-b border-stone-300 px-4 py-3">
-                <h2 className="text-lg font-semibold">Items from Strapi</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-                    <tr>
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Category</th>
-                      <th className="px-4 py-3">Price</th>
-                      <th className="px-4 py-3">Available</th>
-                      <th className="px-4 py-3">Created</th>
-                      <th className="px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td className="px-4 py-6 text-stone-500" colSpan={6}>
-                          Loading items...
-                        </td>
-                      </tr>
-                    ) : items.length ? (
-                      items.map((item) => {
-                        const key = getRecordKey(item);
-                        return (
-                          <tr key={String(key)} className="border-t border-stone-200">
-                            <td className="px-4 py-3">
-                              <p className="font-semibold">{item.name || "-"}</p>
-                              <p className="max-w-md truncate text-stone-500">
-                                {item.description || "-"}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge>{item.category || "-"}</Badge>
-                            </td>
-                            <td className="px-4 py-3">{item.price || "-"}</td>
-                            <td className="px-4 py-3">
-                              {item.is_available ? "Yes" : "No"}
-                            </td>
-                            <td className="px-4 py-3">
-                              {formatDate(item.item_created_at_)}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setItemForm(itemFormFromRecord(item))}
-                                  className="h-9 rounded-md border border-stone-300 px-3 font-semibold hover:border-red-700 hover:text-red-700"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeRecord("items", key)}
-                                  className="h-9 rounded-md bg-stone-950 px-3 font-semibold text-white hover:bg-red-800"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td className="px-4 py-6 text-stone-500" colSpan={6}>
-                          No items yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            />
+            <ItemTable
+              items={items}
+              loading={loading}
+              onEdit={(item) => setItemForm(itemFormFromRecord(item))}
+              onDelete={(key) => removeRecord("items", key)}
+            />
           </section>
         ) : (
           <section className="grid gap-6 lg:grid-cols-[380px_1fr]">
-            <form
+            <OrderFormPanel
+              form={orderForm}
+              itemOptions={itemOptions}
+              selectedItemOptions={selectedItemOptions}
+              total={calculatedOrderTotal}
+              onChange={setOrderForm}
+              onClear={() => setOrderForm(createEmptyOrder())}
               onSubmit={submitOrder}
-              className="rounded-lg border border-stone-300 bg-white p-4"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">
-                  {orderForm.key ? "Edit order" : "Create order"}
-                </h2>
-                {orderForm.key ? (
-                  <button
-                    type="button"
-                    onClick={() => setOrderForm(createEmptyOrder())}
-                    className="text-sm font-semibold text-red-700 hover:text-red-900"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-4 grid gap-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium">
-                    Status
-                    <select
-                      value={orderForm.order_status}
-                      onChange={(event) =>
-                        setOrderForm({
-                          ...orderForm,
-                          order_status: event.target.value,
-                        })
-                      }
-                      className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                    >
-                      {statuses.map((status) => (
-                        <option key={status}>{status}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium">
-                    Total
-                    <input
-                      value={calculatedOrderTotal}
-                      readOnly
-                      className="h-10 rounded-md border border-stone-300 bg-stone-100 px-3 text-stone-700 outline-none"
-                      aria-describedby="order-total-help"
-                    />
-                    <span id="order-total-help" className="text-xs text-stone-500">
-                      Calculated from selected item prices
-                    </span>
-                  </label>
-                </div>
-                <label className="grid gap-1 text-sm font-medium">
-                  Created at
-                  <input
-                    type="datetime-local"
-                    value={orderForm.order_created_at}
-                    onChange={(event) =>
-                      setOrderForm({
-                        ...orderForm,
-                        order_created_at: event.target.value,
-                      })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Updated at
-                  <input
-                    type="datetime-local"
-                    value={orderForm.order_updated_at}
-                    onChange={(event) =>
-                      setOrderForm({
-                        ...orderForm,
-                        order_updated_at: event.target.value,
-                      })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                  />
-                </label>
-                <fieldset className="grid gap-2 text-sm font-medium">
-                  <legend>Items</legend>
-                  <div className="rounded-md border border-stone-300 bg-white shadow-sm focus-within:border-red-700 focus-within:ring-2 focus-within:ring-red-100">
-                    <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-stone-200 px-3 py-2">
-                      {selectedItemOptions.length ? (
-                        selectedItemOptions.map((item) => (
-                          <span
-                            key={String(item.key)}
-                            className="inline-flex min-h-8 items-center gap-2 rounded-md bg-red-50 px-2.5 text-sm font-semibold text-red-900 ring-1 ring-red-200"
-                          >
-                            {item.label}
-                            <button
-                              type="button"
-                              onClick={() => toggleOrderItem(String(item.key))}
-                              className="grid size-5 place-items-center rounded-full text-xs text-red-700 transition hover:bg-red-100"
-                              aria-label={`Remove ${item.label}`}
-                            >
-                              x
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm font-normal text-stone-500">
-                          Select menu items
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="max-h-52 overflow-y-auto p-2">
-                      {itemOptions.length ? (
-                        <div className="grid gap-1">
-                          {itemOptions.map((item) => {
-                            const key = String(item.key);
-                            const isSelected = orderForm.itemKeys.includes(key);
-
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => toggleOrderItem(key)}
-                                className={`flex min-h-11 items-center justify-between gap-3 rounded-md px-3 text-left transition ${
-                                  isSelected
-                                    ? "bg-red-700 text-white"
-                                    : "bg-white text-stone-800 hover:bg-stone-100"
-                                }`}
-                              >
-                                <span className="truncate font-semibold">
-                                  {item.label}
-                                </span>
-                                <span
-                                  className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
-                                    isSelected
-                                      ? "bg-white/15 text-white"
-                                      : "bg-stone-100 text-stone-600"
-                                  }`}
-                                >
-                                  {formatMoney(item.price)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="px-3 py-4 text-sm font-normal text-stone-500">
-                          No items available.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </fieldset>
-                <button
-                  type="submit"
-                  className="h-10 rounded-md bg-red-700 px-4 text-sm font-semibold text-white transition hover:bg-red-800"
-                >
-                  {orderForm.key ? "Update order" : "Create order"}
-                </button>
-              </div>
-            </form>
-
-            <div className="overflow-hidden rounded-lg border border-stone-300 bg-white">
-              <div className="border-b border-stone-300 px-4 py-3">
-                <h2 className="text-lg font-semibold">Orders from Strapi</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-                    <tr>
-                      <th className="px-4 py-3">Order</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Total</th>
-                      <th className="px-4 py-3">Created</th>
-                      <th className="px-4 py-3">Updated</th>
-                      <th className="px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td className="px-4 py-6 text-stone-500" colSpan={6}>
-                          Loading orders...
-                        </td>
-                      </tr>
-                    ) : orders.length ? (
-                      orders.map((order) => {
-                        const key = getRecordKey(order);
-                        return (
-                          <tr key={String(key)} className="border-t border-stone-200">
-                            <td className="px-4 py-3 font-semibold">{key}</td>
-                            <td className="px-4 py-3">
-                              <Badge>{order.order_status || "-"}</Badge>
-                            </td>
-                            <td className="px-4 py-3">
-                              {order.total_amount || "-"}
-                            </td>
-                            <td className="px-4 py-3">
-                              {formatDate(order.order_created_at)}
-                            </td>
-                            <td className="px-4 py-3">
-                              {formatDate(order.order_updated_at)}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setOrderForm(orderFormFromRecord(order))
-                                  }
-                                  className="h-9 rounded-md border border-stone-300 px-3 font-semibold hover:border-red-700 hover:text-red-700"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeRecord("orders", key)}
-                                  className="h-9 rounded-md bg-stone-950 px-3 font-semibold text-white hover:bg-red-800"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td className="px-4 py-6 text-stone-500" colSpan={6}>
-                          No orders yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+              onToggleItem={toggleOrderItem}
+            />
+            <OrderTable
+              orders={orders}
+              loading={loading}
+              onEdit={(order) => setOrderForm(orderFormFromRecord(order))}
+              onDelete={(key) => removeRecord("orders", key)}
+            />
           </section>
         )}
       </div>
