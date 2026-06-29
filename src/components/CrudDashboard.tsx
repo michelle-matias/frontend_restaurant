@@ -33,28 +33,40 @@ type OrderForm = {
   itemKeys: string[];
 };
 
-const emptyItem: ItemForm = {
-  name: "",
-  description: "",
-  price: "",
-  is_available: true,
-  item_created_at_: "",
-  category: "main",
-};
-
-const emptyOrder: OrderForm = {
-  order_status: "pending",
-  total_amount: "",
-  order_created_at: "",
-  order_updated_at: "",
-  itemKeys: [],
-};
-
 function toInputDate(value?: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 16);
+}
+
+function currentInputDate() {
+  const date = new Date();
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
+
+function createEmptyItem(): ItemForm {
+  return {
+    name: "",
+    description: "",
+    price: "",
+    is_available: true,
+    item_created_at_: currentInputDate(),
+    category: "main",
+  };
+}
+
+function createEmptyOrder(): OrderForm {
+  const now = currentInputDate();
+
+  return {
+    order_status: "pending",
+    total_amount: "",
+    order_created_at: now,
+    order_updated_at: now,
+    itemKeys: [],
+  };
 }
 
 function toApiDate(value: string) {
@@ -164,8 +176,8 @@ function Badge({ children }: { children: React.ReactNode }) {
 export function CrudDashboard() {
   const [items, setItems] = useState<Item[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [itemForm, setItemForm] = useState<ItemForm>(emptyItem);
-  const [orderForm, setOrderForm] = useState<OrderForm>(emptyOrder);
+  const [itemForm, setItemForm] = useState<ItemForm>(() => createEmptyItem());
+  const [orderForm, setOrderForm] = useState<OrderForm>(() => createEmptyOrder());
   const [activeTab, setActiveTab] = useState<"items" | "orders">("items");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -190,6 +202,24 @@ export function CrudDashboard() {
 
     return formatMoney(total);
   }, [itemOptions, orderForm.itemKeys]);
+
+  const selectedItemOptions = useMemo(() => {
+    const selectedKeys = new Set(orderForm.itemKeys);
+    return itemOptions.filter((item) => selectedKeys.has(String(item.key)));
+  }, [itemOptions, orderForm.itemKeys]);
+
+  function toggleOrderItem(key: string) {
+    setOrderForm((current) => {
+      const isSelected = current.itemKeys.includes(key);
+
+      return {
+        ...current,
+        itemKeys: isSelected
+          ? current.itemKeys.filter((itemKey) => itemKey !== key)
+          : [...current.itemKeys, key],
+      };
+    });
+  }
 
   async function loadData() {
     setLoading(true);
@@ -226,7 +256,7 @@ export function CrudDashboard() {
         await createRecord("items", itemPayload(itemForm));
         setMessage("Item created.");
       }
-      setItemForm(emptyItem);
+      setItemForm(createEmptyItem());
       await loadData();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save item.");
@@ -247,7 +277,7 @@ export function CrudDashboard() {
         await createRecord("orders", orderPayload(orderForm, calculatedOrderTotal));
         setMessage("Order created.");
       }
-      setOrderForm(emptyOrder);
+      setOrderForm(createEmptyOrder());
       await loadData();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save order.");
@@ -341,7 +371,7 @@ export function CrudDashboard() {
                 {itemForm.key ? (
                   <button
                     type="button"
-                    onClick={() => setItemForm(emptyItem)}
+                    onClick={() => setItemForm(createEmptyItem())}
                     className="text-sm font-semibold text-red-700 hover:text-red-900"
                   >
                     Clear
@@ -532,7 +562,7 @@ export function CrudDashboard() {
                 {orderForm.key ? (
                   <button
                     type="button"
-                    onClick={() => setOrderForm(emptyOrder)}
+                    onClick={() => setOrderForm(createEmptyOrder())}
                     className="text-sm font-semibold text-red-700 hover:text-red-900"
                   >
                     Clear
@@ -599,29 +629,76 @@ export function CrudDashboard() {
                     className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
                   />
                 </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Items
-                  <select
-                    multiple
-                    value={orderForm.itemKeys}
-                    onChange={(event) =>
-                      setOrderForm({
-                        ...orderForm,
-                        itemKeys: Array.from(
-                          event.target.selectedOptions,
-                          (option) => option.value,
-                        ),
-                      })
-                    }
-                    className="min-h-28 rounded-md border border-stone-300 px-3 py-2 outline-none focus:border-red-700"
-                  >
-                    {itemOptions.map((item) => (
-                      <option key={String(item.key)} value={String(item.key)}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <fieldset className="grid gap-2 text-sm font-medium">
+                  <legend>Items</legend>
+                  <div className="rounded-md border border-stone-300 bg-white shadow-sm focus-within:border-red-700 focus-within:ring-2 focus-within:ring-red-100">
+                    <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-stone-200 px-3 py-2">
+                      {selectedItemOptions.length ? (
+                        selectedItemOptions.map((item) => (
+                          <span
+                            key={String(item.key)}
+                            className="inline-flex min-h-8 items-center gap-2 rounded-md bg-red-50 px-2.5 text-sm font-semibold text-red-900 ring-1 ring-red-200"
+                          >
+                            {item.label}
+                            <button
+                              type="button"
+                              onClick={() => toggleOrderItem(String(item.key))}
+                              className="grid size-5 place-items-center rounded-full text-xs text-red-700 transition hover:bg-red-100"
+                              aria-label={`Remove ${item.label}`}
+                            >
+                              x
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm font-normal text-stone-500">
+                          Select menu items
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="max-h-52 overflow-y-auto p-2">
+                      {itemOptions.length ? (
+                        <div className="grid gap-1">
+                          {itemOptions.map((item) => {
+                            const key = String(item.key);
+                            const isSelected = orderForm.itemKeys.includes(key);
+
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleOrderItem(key)}
+                                className={`flex min-h-11 items-center justify-between gap-3 rounded-md px-3 text-left transition ${
+                                  isSelected
+                                    ? "bg-red-700 text-white"
+                                    : "bg-white text-stone-800 hover:bg-stone-100"
+                                }`}
+                              >
+                                <span className="truncate font-semibold">
+                                  {item.label}
+                                </span>
+                                <span
+                                  className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${
+                                    isSelected
+                                      ? "bg-white/15 text-white"
+                                      : "bg-stone-100 text-stone-600"
+                                  }`}
+                                >
+                                  {formatMoney(item.price)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="px-3 py-4 text-sm font-normal text-stone-500">
+                          No items available.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </fieldset>
                 <button
                   type="submit"
                   className="h-10 rounded-md bg-red-700 px-4 text-sm font-semibold text-white transition hover:bg-red-800"
