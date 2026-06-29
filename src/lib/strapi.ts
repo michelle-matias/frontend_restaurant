@@ -4,20 +4,18 @@ export type StrapiRecord<T> = T & {
 };
 
 export type Item = StrapiRecord<{
-  item_id?: string;
   name?: string;
   description?: string;
-  price?: string;
+  price?: string | number;
   is_available?: boolean;
   item_created_at_?: string;
   category?: "starters" | "main" | "dessert" | "drinks";
 }>;
 
 export type Order = StrapiRecord<{
-  order_id?: string;
   order_updated_at?: string;
   order_status?: "pending" | "preparing" | "delivered" | "cancelled";
-  total_amount?: string;
+  total_amount?: string | number;
   order_created_at?: string;
   items?: Item[] | { data?: unknown[] };
 }>;

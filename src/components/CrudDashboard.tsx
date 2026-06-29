@@ -16,7 +16,6 @@ const statuses = ["pending", "preparing", "delivered", "cancelled"] as const;
 
 type ItemForm = {
   key?: string | number;
-  item_id: string;
   name: string;
   description: string;
   price: string;
@@ -27,7 +26,6 @@ type ItemForm = {
 
 type OrderForm = {
   key?: string | number;
-  order_id: string;
   order_status: string;
   total_amount: string;
   order_created_at: string;
@@ -36,7 +34,6 @@ type OrderForm = {
 };
 
 const emptyItem: ItemForm = {
-  item_id: "",
   name: "",
   description: "",
   price: "",
@@ -46,7 +43,6 @@ const emptyItem: ItemForm = {
 };
 
 const emptyOrder: OrderForm = {
-  order_id: "",
   order_status: "pending",
   total_amount: "",
   order_created_at: "",
@@ -76,31 +72,58 @@ function formatDate(value?: string) {
 function itemFormFromRecord(item: Item): ItemForm {
   return {
     key: getRecordKey(item),
-    item_id: item.item_id ?? "",
     name: item.name ?? "",
     description: item.description ?? "",
-    price: item.price ?? "",
+    price: item.price === undefined ? "" : String(item.price),
     is_available: Boolean(item.is_available),
     item_created_at_: toInputDate(item.item_created_at_),
     category: item.category ?? "main",
   };
 }
 
+function extractOrderItemKeys(order: Order) {
+  if (!order.items) return [];
+
+  if (Array.isArray(order.items)) {
+    return order.items
+      .map((item) => getRecordKey(item))
+      .filter((key): key is string | number => key !== undefined)
+      .map(String);
+  }
+
+  if ("data" in order.items && Array.isArray(order.items.data)) {
+    return order.items.data
+      .map((item) => {
+        if (!item || typeof item !== "object") return undefined;
+        const record = item as {
+          id?: number;
+          documentId?: string;
+          attributes?: { id?: number; documentId?: string };
+        };
+
+        return record.documentId ?? record.id ?? record.attributes?.documentId;
+      })
+      .filter((key): key is string | number => key !== undefined)
+      .map(String);
+  }
+
+  return [];
+}
+
 function orderFormFromRecord(order: Order): OrderForm {
   return {
     key: getRecordKey(order),
-    order_id: order.order_id ?? "",
     order_status: order.order_status ?? "pending",
-    total_amount: order.total_amount ?? "",
+    total_amount:
+      order.total_amount === undefined ? "" : String(order.total_amount),
     order_created_at: toInputDate(order.order_created_at),
     order_updated_at: toInputDate(order.order_updated_at),
-    itemKeys: [],
+    itemKeys: extractOrderItemKeys(order),
   };
 }
 
 function itemPayload(form: ItemForm) {
   return {
-    item_id: form.item_id || undefined,
     name: form.name,
     description: form.description,
     price: form.price || undefined,
@@ -110,15 +133,24 @@ function itemPayload(form: ItemForm) {
   };
 }
 
-function orderPayload(form: OrderForm) {
+function orderPayload(form: OrderForm, totalAmount: string) {
   return {
-    order_id: form.order_id || undefined,
     order_status: form.order_status,
-    total_amount: form.total_amount || undefined,
+    total_amount: totalAmount || undefined,
     order_created_at: toApiDate(form.order_created_at),
     order_updated_at: toApiDate(form.order_updated_at),
     items: form.itemKeys.length ? form.itemKeys : undefined,
   };
+}
+
+function parsePrice(price?: string | number) {
+  if (price === undefined || price === null || price === "") return 0;
+  const parsed = Number(String(price).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMoney(value: number) {
+  return value.toFixed(2);
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -143,11 +175,21 @@ export function CrudDashboard() {
       items
         .map((item) => ({
           key: getRecordKey(item),
-          label: item.name || `Item ${item.item_id || item.id}`,
+          label: item.name || `Item ${getRecordKey(item)}`,
+          price: parsePrice(item.price),
         }))
         .filter((item) => item.key),
     [items],
   );
+
+  const calculatedOrderTotal = useMemo(() => {
+    const selectedKeys = new Set(orderForm.itemKeys);
+    const total = itemOptions.reduce((sum, item) => {
+      return selectedKeys.has(String(item.key)) ? sum + item.price : sum;
+    }, 0);
+
+    return formatMoney(total);
+  }, [itemOptions, orderForm.itemKeys]);
 
   async function loadData() {
     setLoading(true);
@@ -195,10 +237,14 @@ export function CrudDashboard() {
     event.preventDefault();
     try {
       if (orderForm.key) {
-        await updateRecord("orders", orderForm.key, orderPayload(orderForm));
+        await updateRecord(
+          "orders",
+          orderForm.key,
+          orderPayload(orderForm, calculatedOrderTotal),
+        );
         setMessage("Order updated.");
       } else {
-        await createRecord("orders", orderPayload(orderForm));
+        await createRecord("orders", orderPayload(orderForm, calculatedOrderTotal));
         setMessage("Order created.");
       }
       setOrderForm(emptyOrder);
@@ -303,17 +349,6 @@ export function CrudDashboard() {
                 ) : null}
               </div>
               <div className="mt-4 grid gap-3">
-                <label className="grid gap-1 text-sm font-medium">
-                  Item ID
-                  <input
-                    value={itemForm.item_id}
-                    onChange={(event) =>
-                      setItemForm({ ...itemForm, item_id: event.target.value })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                    placeholder="1"
-                  />
-                </label>
                 <label className="grid gap-1 text-sm font-medium">
                   Name
                   <input
@@ -505,17 +540,6 @@ export function CrudDashboard() {
                 ) : null}
               </div>
               <div className="mt-4 grid gap-3">
-                <label className="grid gap-1 text-sm font-medium">
-                  Order ID
-                  <input
-                    value={orderForm.order_id}
-                    onChange={(event) =>
-                      setOrderForm({ ...orderForm, order_id: event.target.value })
-                    }
-                    className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                    placeholder="1001"
-                  />
-                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium">
                     Status
@@ -537,16 +561,14 @@ export function CrudDashboard() {
                   <label className="grid gap-1 text-sm font-medium">
                     Total
                     <input
-                      value={orderForm.total_amount}
-                      onChange={(event) =>
-                        setOrderForm({
-                          ...orderForm,
-                          total_amount: event.target.value,
-                        })
-                      }
-                      className="h-10 rounded-md border border-stone-300 px-3 outline-none focus:border-red-700"
-                      placeholder="25.00"
+                      value={calculatedOrderTotal}
+                      readOnly
+                      className="h-10 rounded-md border border-stone-300 bg-stone-100 px-3 text-stone-700 outline-none"
+                      aria-describedby="order-total-help"
                     />
+                    <span id="order-total-help" className="text-xs text-stone-500">
+                      Calculated from selected item prices
+                    </span>
                   </label>
                 </div>
                 <label className="grid gap-1 text-sm font-medium">
@@ -637,9 +659,7 @@ export function CrudDashboard() {
                         const key = getRecordKey(order);
                         return (
                           <tr key={String(key)} className="border-t border-stone-200">
-                            <td className="px-4 py-3 font-semibold">
-                              {order.order_id || key}
-                            </td>
+                            <td className="px-4 py-3 font-semibold">{key}</td>
                             <td className="px-4 py-3">
                               <Badge>{order.order_status || "-"}</Badge>
                             </td>
