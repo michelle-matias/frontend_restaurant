@@ -50,6 +50,17 @@ export type Order = StrapiRecord<{
   items?: Item[] | { data?: unknown[] };
 }>;
 
+export type StrapiUser = {
+  id?: number;
+  username?: string;
+  email?: string;
+};
+
+export type StrapiAuthResponse = {
+  jwt: string;
+  user: StrapiUser;
+};
+
 export const STRAPI_URL =
   process.env.NEXT_PUBLIC_STRAPI_URL?.replace(/\/$/, "") ??
   "http://localhost:1337";
@@ -102,6 +113,38 @@ export async function createRecord<T extends object>(
   return res.json();
 }
 
+export async function loginCustomer(identifier: string, password: string) {
+  const res = await fetch(`${STRAPI_URL}/api/auth/local`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res, "Could not login."));
+  }
+
+  return (await res.json()) as StrapiAuthResponse;
+}
+
+export async function registerCustomer(
+  username: string,
+  email: string,
+  password: string,
+) {
+  const res = await fetch(`${STRAPI_URL}/api/auth/local/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, password }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res, "Could not create account."));
+  }
+
+  return (await res.json()) as StrapiAuthResponse;
+}
+
 export async function uploadFile(file: File) {
   const formData = new FormData();
   formData.append("files", file);
@@ -134,6 +177,19 @@ async function readErrorMessage(res: Response) {
     return json.error ?? json.message ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+async function readApiErrorMessage(res: Response, fallback: string) {
+  try {
+    const json = (await res.json()) as {
+      error?: { message?: string };
+      message?: string;
+    };
+
+    return json.error?.message ?? json.message ?? `${fallback} Status: ${res.status}`;
+  } catch {
+    return `${fallback} Status: ${res.status}`;
   }
 }
 

@@ -3,8 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { registerCustomer, StrapiAuthResponse } from "@/lib/strapi";
 import { AuthField } from "./AuthField";
 import { AuthShell } from "./AuthShell";
+
+function storeCustomerSession(auth: StrapiAuthResponse) {
+  window.localStorage.setItem("strapiJwt", auth.jwt);
+  window.localStorage.setItem("customerName", auth.user.username || "Cliente");
+
+  if (auth.user.email) {
+    window.localStorage.setItem("customerEmail", auth.user.email);
+  }
+
+  if (auth.user.id) {
+    window.localStorage.setItem("customerId", String(auth.user.id));
+  }
+}
 
 export function CreateAccountExperience() {
   const router = useRouter();
@@ -12,21 +26,29 @@ export function CreateAccountExperience() {
   const [message, setMessage] = useState("");
   const [isFocused, setIsFocused] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const formData = new FormData(event.currentTarget);
-    const displayName = String(formData.get("name") ?? "").trim() || "Cliente";
+    const username = String(formData.get("name") ?? "").trim() || "Cliente";
+    const email = String(formData.get("email") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
 
     setIsSubmitting(true);
     setMessage("");
 
-    window.setTimeout(() => {
-      window.localStorage.setItem("customerName", displayName);
-      setIsSubmitting(false);
+    try {
+      const auth = await registerCustomer(username, email, password);
+      storeCustomerSession(auth);
       setMessage("Conta criada. A voltar ao menu...");
       router.push("/");
-    }, 900);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Não foi possível criar a conta.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
