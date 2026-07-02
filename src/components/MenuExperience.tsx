@@ -36,23 +36,40 @@ const categoryLabels: Record<string, string> = {
 };
 
 const categoryOrder = ["starters", "main", "dessert", "drinks", "other"];
+const customerSessionEvent = "customer-session-change";
 
-function subscribeToCustomerName(onStoreChange: () => void) {
+function subscribeToCustomerSession(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
   window.addEventListener("focus", onStoreChange);
+  window.addEventListener(customerSessionEvent, onStoreChange);
 
   return () => {
     window.removeEventListener("storage", onStoreChange);
     window.removeEventListener("focus", onStoreChange);
+    window.removeEventListener(customerSessionEvent, onStoreChange);
   };
 }
 
-function getCustomerNameSnapshot() {
-  return window.localStorage.getItem("customerName") ?? "";
+function getCustomerSessionSnapshot() {
+  return JSON.stringify({
+    isLoggedIn: Boolean(window.localStorage.getItem("strapiJwt")),
+    name: window.localStorage.getItem("customerName") ?? "",
+  });
 }
 
-function getCustomerNameServerSnapshot() {
-  return "";
+function getCustomerSessionServerSnapshot() {
+  return JSON.stringify({
+    isLoggedIn: false,
+    name: "",
+  });
+}
+
+function clearCustomerSession() {
+  window.localStorage.removeItem("strapiJwt");
+  window.localStorage.removeItem("customerId");
+  window.localStorage.removeItem("customerEmail");
+  window.localStorage.removeItem("customerName");
+  window.dispatchEvent(new Event(customerSessionEvent));
 }
 
 function formatEuro(value?: string | number) {
@@ -80,11 +97,13 @@ export function MenuExperience({ items, error }: MenuExperienceProps) {
   const [orderMessage, setOrderMessage] = useState("");
   const [orderError, setOrderError] = useState("");
   const [isSendingOrder, setIsSendingOrder] = useState(false);
-  const customerName = useSyncExternalStore(
-    subscribeToCustomerName,
-    getCustomerNameSnapshot,
-    getCustomerNameServerSnapshot,
-  );
+  const customerSession = JSON.parse(
+    useSyncExternalStore(
+      subscribeToCustomerSession,
+      getCustomerSessionSnapshot,
+      getCustomerSessionServerSnapshot,
+    ),
+  ) as { isLoggedIn: boolean; name: string };
 
   const availableItems = useMemo(
     () => items.filter((item) => item.is_available !== false),
@@ -222,14 +241,24 @@ export function MenuExperience({ items, error }: MenuExperienceProps) {
 
           <div className="hidden items-center gap-4 sm:flex">
             <span className="text-sm text-surface-variant">
-              Olá, {customerName || "Visitante"}
+              Olá, {customerSession.name || "Visitante"}
             </span>
-            <Link
-              href="/login"
-              className="rounded-eight border border-outline px-3 py-1 text-xs text-inverse-on-surface transition-colors hover:bg-surface-container-highest hover:text-on-surface"
-            >
-              Entrar
-            </Link>
+            {customerSession.isLoggedIn ? (
+              <button
+                type="button"
+                onClick={clearCustomerSession}
+                className="rounded-eight border border-outline px-3 py-1 text-xs text-inverse-on-surface transition-colors hover:bg-surface-container-highest hover:text-on-surface"
+              >
+                Sair
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-eight border border-outline px-3 py-1 text-xs text-inverse-on-surface transition-colors hover:bg-surface-container-highest hover:text-on-surface"
+              >
+                Entrar
+              </Link>
+            )}
           </div>
         </div>
       </header>
