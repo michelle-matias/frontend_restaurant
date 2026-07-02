@@ -3,6 +3,30 @@ export type StrapiRecord<T> = T & {
   documentId?: string;
 };
 
+export type StrapiMediaFormat = {
+  url?: string;
+  width?: number;
+  height?: number;
+};
+
+export type StrapiMedia = StrapiRecord<{
+  url?: string;
+  alternativeText?: string;
+  caption?: string;
+  width?: number;
+  height?: number;
+  formats?: Record<string, StrapiMediaFormat>;
+}>;
+
+export type UploadedStrapiMedia = StrapiMedia & {
+  id: number;
+};
+
+export type StrapiMediaField =
+  | StrapiMedia
+  | StrapiMedia[]
+  | { data?: StrapiMedia | StrapiMedia[] | null };
+
 export type Item = StrapiRecord<{
   name?: string;
   description?: string;
@@ -10,6 +34,12 @@ export type Item = StrapiRecord<{
   is_available?: boolean;
   item_created_at_?: string;
   category?: "starters" | "main" | "dessert" | "drinks";
+  image?: StrapiMediaField;
+  images?: StrapiMediaField;
+  photo?: StrapiMediaField;
+  picture?: StrapiMediaField;
+  media?: StrapiMediaField;
+  thumbnail?: StrapiMediaField;
 }>;
 
 export type Order = StrapiRecord<{
@@ -20,7 +50,7 @@ export type Order = StrapiRecord<{
   items?: Item[] | { data?: unknown[] };
 }>;
 
-const STRAPI_URL =
+export const STRAPI_URL =
   process.env.NEXT_PUBLIC_STRAPI_URL?.replace(/\/$/, "") ??
   "http://localhost:1337";
 
@@ -70,6 +100,41 @@ export async function createRecord<T extends object>(
   }
 
   return res.json();
+}
+
+export async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append("files", file);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const message = await readErrorMessage(res);
+    throw new Error(message ?? `Could not upload file. Status: ${res.status}`);
+  }
+
+  const uploadedFiles = (await res.json()) as UploadedStrapiMedia[];
+  const uploadedFile = uploadedFiles[0];
+
+  if (!uploadedFile?.id) {
+    throw new Error("Upload succeeded but no file id was returned.");
+  }
+
+  return uploadedFile;
+}
+
+async function readErrorMessage(res: Response) {
+  const fallback = `Could not upload file. Status: ${res.status}`;
+
+  try {
+    const json = (await res.json()) as { error?: string; message?: string };
+    return json.error ?? json.message ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function updateRecord<T extends object>(

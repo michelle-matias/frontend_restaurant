@@ -11,6 +11,9 @@ export type ItemForm = {
   is_available: boolean;
   item_created_at_: string;
   category: string;
+  imageKey?: string | number;
+  imageFile?: File | null;
+  imageName?: string;
 };
 
 export type OrderForm = {

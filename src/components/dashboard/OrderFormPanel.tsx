@@ -45,7 +45,7 @@ export function OrderFormPanel({
 
       <div className="mt-4 grid gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm font-medium">
+          <label className="grid content-start gap-1 text-sm font-medium">
             Status
             <select
               value={form.order_status}
@@ -59,7 +59,7 @@ export function OrderFormPanel({
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-sm font-medium">
+          <label className="grid content-start gap-1 text-sm font-medium sm:mx-4 w-full min-w-0">
             Total
             <input
               value={total}

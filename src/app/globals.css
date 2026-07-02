@@ -1,21 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f5f4;
-  --foreground: #1c1917;
+  --background: #f8f9ff;
+  --foreground: #121c2a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --color-primary: #9d4300;
+  --color-primary-container: #f97316;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #7c2d12;
+  --color-on-background: #1a1c1e;
+  --color-surface: #f8f9ff;
+  --color-on-surface: #121c2a;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container-high: #dee9fc;
+  --color-surface-container-highest: #d9e3f6;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-variant: #d9e3f6;
+  --color-inverse-surface: #27313f;
+  --color-inverse-on-surface: #eaf1ff;
+  --color-on-surface-variant: #584237;
+  --color-secondary: #006d30;
+  --color-secondary-container: #92f5a4;
+  --color-on-secondary-container: #007233;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  --color-outline: #8c7164;
+  --color-outline-variant: #e0c0b1;
+  --radius-custom: 8px;
+  --radius-eight: 8px;
+  --shadow-login: 0 12px 30px rgb(249 115 22 / 0.08);
+  --font-sans: var(--font-montserrat), Arial, Helvetica, sans-serif;
+  --font-headline: var(--font-montserrat), Arial, Helvetica, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
 }
 
 button,

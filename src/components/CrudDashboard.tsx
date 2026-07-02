@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { site } from "@/lib/site";
 import {
   createRecord,
   deleteRecord,
@@ -8,6 +10,7 @@ import {
   Item,
   Order,
   updateRecord,
+  uploadFile,
 } from "@/lib/strapi";
 import { DashboardTabs } from "./dashboard/DashboardTabs";
 import { ItemFormPanel } from "./dashboard/ItemFormPanel";
@@ -99,11 +102,27 @@ export function CrudDashboard() {
     event.preventDefault();
 
     try {
+      let nextItemForm = itemForm;
+
+      if (itemForm.imageFile) {
+        const uploadedImage = await uploadFile(itemForm.imageFile);
+        nextItemForm = {
+          ...itemForm,
+          imageKey: uploadedImage.id,
+          imageFile: null,
+          imageName:
+            uploadedImage.alternativeText ||
+            uploadedImage.caption ||
+            uploadedImage.url ||
+            itemForm.imageFile.name,
+        };
+      }
+
       if (itemForm.key) {
-        await updateRecord("items", itemForm.key, itemPayload(itemForm));
+        await updateRecord("items", itemForm.key, itemPayload(nextItemForm));
         setMessage("Item updated.");
       } else {
-        await createRecord("items", itemPayload(itemForm));
+        await createRecord("items", itemPayload(nextItemForm));
         setMessage("Item created.");
       }
 
@@ -157,19 +176,30 @@ export function CrudDashboard() {
         <header className="flex flex-col gap-4 border-b border-stone-300 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-red-700">
-              BD Restaurant
+              {site.name}
             </p>
             <h1 className="mt-1 text-3xl font-semibold tracking-normal">
-              Strapi CRUD Dashboard
+              Área Admin
             </h1>
+            <p className="mt-2 text-sm text-stone-600">
+              Crie, edite e remova items do menu ligados ao Strapi.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={loadData}
-            className="h-10 rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-red-800"
-          >
-            Refresh API
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/"
+              className="inline-flex h-10 items-center rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 transition hover:border-red-700 hover:text-red-700"
+            >
+              Voltar ao menu
+            </Link>
+            <button
+              type="button"
+              onClick={loadData}
+              className="h-10 rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-red-800"
+            >
+              Atualizar dados
+            </button>
+          </div>
         </header>
 
         <SummaryCards

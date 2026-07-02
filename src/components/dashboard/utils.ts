@@ -1,3 +1,4 @@
+import { getMediaKey, getMediaLabel } from "@/lib/itemMedia";
 import { getRecordKey, Item, Order } from "@/lib/strapi";
 import { ItemForm, ItemOption, OrderForm } from "./types";
 
@@ -58,6 +59,8 @@ export function itemFormFromRecord(item: Item): ItemForm {
     is_available: Boolean(item.is_available),
     item_created_at_: toInputDate(item.item_created_at_),
     category: item.category ?? "main",
+    imageKey: getMediaKey(item.image),
+    imageName: getMediaLabel(item.image),
   };
 }
 
@@ -110,6 +113,7 @@ export function itemPayload(form: ItemForm) {
     is_available: form.is_available,
     item_created_at_: toApiDate(form.item_created_at_),
     category: form.category,
+    image: form.imageKey,
   };
 }
 
