@@ -59,8 +59,8 @@ export function itemFormFromRecord(item: Item): ItemForm {
     is_available: Boolean(item.is_available),
     item_created_at_: toInputDate(item.item_created_at_),
     category: item.category ?? "main",
-    imageKey: getMediaKey(item.image),
-    imageName: getMediaLabel(item.image),
+    imageKey: getMediaKey(item.photo),
+    imageName: getMediaLabel(item.photo),
   };
 }
 
@@ -109,11 +109,11 @@ export function itemPayload(form: ItemForm) {
   return {
     name: form.name,
     description: form.description,
-    price: form.price || undefined,
+    price: form.price ? parsePrice(form.price) : undefined,
     is_available: form.is_available,
     item_created_at_: toApiDate(form.item_created_at_),
     category: form.category,
-    image: form.imageKey,
+    photo: form.imageKey,
   };
 }
 

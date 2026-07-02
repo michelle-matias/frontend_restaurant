@@ -74,6 +74,9 @@ function getCategory(item: Item) {
 
 export function MenuExperience({ items, error }: MenuExperienceProps) {
   const [cart, setCart] = useState<Record<string, CartLine>>({});
+  const [failedImageKeys, setFailedImageKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [orderMessage, setOrderMessage] = useState("");
   const [orderError, setOrderError] = useState("");
   const [isSendingOrder, setIsSendingOrder] = useState(false);
@@ -264,6 +267,7 @@ export function MenuExperience({ items, error }: MenuExperienceProps) {
                   {group.items.map((item, index) => {
                     const key = itemKey(item, index);
                     const itemImage = getItemImage(item);
+                    const hasImage = itemImage && !failedImageKeys.has(key);
 
                     return (
                       <article
@@ -271,13 +275,21 @@ export function MenuExperience({ items, error }: MenuExperienceProps) {
                         className="flex h-full flex-col overflow-hidden rounded-eight border border-outline-variant bg-surface-container-lowest shadow-sm"
                       >
                         <div className="relative flex h-40 items-center justify-center bg-surface-container-high text-on-surface-variant">
-                          {itemImage ? (
+                          {hasImage ? (
                             <Image
                               src={itemImage.url}
                               alt={itemImage.alt}
                               fill
+                              unoptimized
                               sizes="(min-width: 1280px) 280px, (min-width: 640px) 50vw, 100vw"
                               className="object-cover"
+                              onError={() => {
+                                setFailedImageKeys((current) => {
+                                  const next = new Set(current);
+                                  next.add(key);
+                                  return next;
+                                });
+                              }}
                             />
                           ) : (
                             <span className="text-xs font-medium">
